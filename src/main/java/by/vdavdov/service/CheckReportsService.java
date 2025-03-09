@@ -14,10 +14,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class CheckReportsService {
     private static final Logger log = LogManager.getLogger(CheckReportsService.class);
@@ -27,7 +27,7 @@ public class CheckReportsService {
 
     public void getRejectedReports() throws Exception {
         Instant lastRun = lastRunService.getLastRunTime();
-        Instant currentRun = Instant.now();
+        Instant currentRun = Instant.now().minus(1, ChronoUnit.DAYS);
 
         int currentPage = 0;
         boolean hasMorePages = true;
@@ -63,7 +63,7 @@ public class CheckReportsService {
 
         if (!hasErrors) {
             lastRunService.saveLastRunTime(currentRun);
-            log.info("Все новые отчеты обработаны. Следующий запуск в {} минут", YamlUtil.scheduleInterval);
+            log.info("Все новые отчеты обработаны. Следующий запуск через {} минут", YamlUtil.scheduleInterval);
         }
     }
 
