@@ -19,6 +19,10 @@ public class YamlUtil {
     public static String host;
     public static String authLogin;
     public static String authPassword;
+    public static String dbUrl;
+    public static String dbUser;
+    public static String dbPassword;
+
 
     public static void loadInternalConfig() throws IOException {
         Yaml yaml = new Yaml();
@@ -49,6 +53,13 @@ public class YamlUtil {
 
         host = getStringValue(config, "host");
 
+        Map<String, Object> dbConfig = getMapValue(config, "db");
+        if (dbConfig != null) {
+            dbUrl = getStringValue(dbConfig, "url");
+            dbUser = getStringValue(dbConfig, "user");
+            dbPassword = getStringValue(dbConfig, "password");
+        }
+
         Map<String, Object> authConfig = getMapValue(config, "auth");
         if (authConfig != null) {
             authLogin = getStringValue(authConfig, "login");
@@ -62,8 +73,9 @@ public class YamlUtil {
         log.info("Конфигурация загружена \n" +
                         "host: {} \n" +
                         "login: {} \n" +
-                        "password: {} \n"
-                , host, authLogin, authPassword);
+                        "password: {} \n" +
+                        "dbUrl: {} \n"
+                , host, authLogin, authPassword, dbUrl);
     }
 
     private static String getStringValue(Map<String, Object> config, String key) {
