@@ -32,12 +32,13 @@ public class CancelService {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(url))
                 .header("Authorization", "Bearer " + authService.getToken())
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-        if (response.statusCode() != 201) {
+        if (response.statusCode() != 200) {
             log.error("Не получилось отменить отчет с id - {}, ошибка {} {}",
                     reportId,
                     response.statusCode(),
@@ -45,7 +46,7 @@ public class CancelService {
             throw new RuntimeException(response.body());
         }
 
-        if (response.statusCode() == 201) {
+        if (response.statusCode() == 200) {
             log.info("Отчет с id - {} успешно отменен",
                     reportId);
         }

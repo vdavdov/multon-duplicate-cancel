@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
+import java.util.Objects;
 
 public class YamlUtil {
     private static final Logger log = LogManager.getLogger(YamlUtil.class);
@@ -19,9 +20,7 @@ public class YamlUtil {
     public static String host;
     public static String authLogin;
     public static String authPassword;
-    public static String dbUrl;
-    public static String dbUser;
-    public static String dbPassword;
+    public static int scheduleInterval;
 
 
     public static void loadInternalConfig() throws IOException {
@@ -53,11 +52,9 @@ public class YamlUtil {
 
         host = getStringValue(config, "host");
 
-        Map<String, Object> dbConfig = getMapValue(config, "db");
-        if (dbConfig != null) {
-            dbUrl = getStringValue(dbConfig, "url");
-            dbUser = getStringValue(dbConfig, "user");
-            dbPassword = getStringValue(dbConfig, "password");
+        Map<String, Object> schedule = getMapValue(config, "schedule");
+        if (schedule != null) {
+            scheduleInterval = getIntValue(schedule, "interval");
         }
 
         Map<String, Object> authConfig = getMapValue(config, "auth");
@@ -74,8 +71,8 @@ public class YamlUtil {
                         "host: {} \n" +
                         "login: {} \n" +
                         "password: {} \n" +
-                        "dbUrl: {} \n"
-                , host, authLogin, authPassword, dbUrl);
+                        "периодичность проверки: {} \n"
+                , host, authLogin, authPassword, scheduleInterval);
     }
 
     private static String getStringValue(Map<String, Object> config, String key) {
@@ -89,5 +86,15 @@ public class YamlUtil {
             return (Map<String, Object>) value;
         }
         return null;
+    }
+
+    private static int getIntValue(Map<String, Object> config, String key) {
+        Object value = config.get(key);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        } else if (value != null) {
+            return Integer.parseInt(value.toString());
+        }
+        return 0;
     }
 }
