@@ -6,6 +6,15 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 public class ContentItem {
     private String id;
     private String rejectionReason;
+    private String orderNumber;
+
+    public String getOrderNumber() {
+        return orderNumber;
+    }
+
+    public void setOrderNumber(String orderNumber) {
+        this.orderNumber = orderNumber;
+    }
 
     public String getId() {
         return id;

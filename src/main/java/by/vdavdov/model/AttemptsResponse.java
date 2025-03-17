@@ -8,6 +8,20 @@ import java.util.List;
 public class AttemptsResponse {
     @JsonProperty("content")
     private List<Attempt> content;
+    @JsonProperty("totalPages")
+    private int totalPages;
+
+    public int getTotalPages() {
+        return totalPages;
+    }
+
+    public void setTotalPages(int totalPages) {
+        this.totalPages = totalPages;
+    }
+
+    public void setContent(List<Attempt> content) {
+        this.content = content;
+    }
 
     public List<Attempt> getContent() {
         return content;

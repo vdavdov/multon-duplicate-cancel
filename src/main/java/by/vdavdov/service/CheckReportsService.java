@@ -69,25 +69,22 @@ public class CheckReportsService {
         }
     }
 
-    private void processPage(List<ContentItem> items) throws Exception {
-        Map<String, String> reports = new HashMap<>();
-        for (ContentItem item : items) {
-            reports.put(item.getId(), item.getRejectionReason());
-        }
-        checkUtils(reports);
-    }
-
-    private void checkUtils(Map<String, String> rejectedReports) throws Exception {
-        for (Map.Entry<String, String> entry : rejectedReports.entrySet()) {
-            String reportId = entry.getKey();
-            String rejectionReason = entry.getValue();
-
-            if (rejectionReason.contains("причина отклонения: Повторное нанесение кода.")) {
-                processPartialDuplicate(reportId);
-            } else if (rejectionReason.contains("Дубликат кода")) {
-                processFullDuplicate(reportId);
+    private void processPage(List<ContentItem> items) {
+        items.forEach(item -> {
+            if (item.getRejectionReason().contains("Повторное нанесение")) {
+                try {
+                    processPartialDuplicate(item.getId(), item.getOrderNumber());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            } else if (item.getRejectionReason().contains("Дубликат кода")) {
+                try {
+                    processFullDuplicate(item.getId());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
-        }
+        });
     }
 
     private void processFullDuplicate(String reportId) throws Exception {
@@ -105,9 +102,11 @@ public class CheckReportsService {
         }
     }
 
-    private void processPartialDuplicate(String reportId) throws Exception {
+    private void processPartialDuplicate(String reportId, String orderNumber) throws Exception {
         try {
+            log.info("Начало обработки частичного дубля для отчета {}", reportId);
             List<CodeInfo> codes = getReportCodes(reportId);
+            log.debug("Получено кодов: {}", codes.size());
             if (codes.isEmpty()) {
                 log.info("Нет кодов для отчета {}", reportId);
                 return;
@@ -129,9 +128,10 @@ public class CheckReportsService {
             }
 
             acceptReport(utilId);
-            recalculateOrder(reportId);
+            recalculateOrder(reportId, orderNumber);
+            log.info("Успешное завершение обработки отчета {}", reportId);
         } catch (Exception e) {
-            log.error("Ошибка обработки частичного дубля для отчета {}", reportId, e);
+            log.error("Критическая ошибка обработки отчета {}", reportId, e);
         }
     }
 
@@ -180,43 +180,59 @@ public class CheckReportsService {
     }
 
     private List<String> processContent(String content, List<CodeInfo> dbCodes) {
-        Matcher matcher = CIS_PATTERN.matcher(content);
-        List<String> badCodes = new ArrayList<>();
+        try {
+            JsonNode root = objectMapper.readTree(content);
+            JsonNode cisList = root.get("cisList");
 
-        while (matcher.find()) {
-            String cisEntry = matcher.group(1);
-            if (!cisEntry.contains("\\\"code\\\":0")) {
-                String code = cisEntry.split("\\\\\",\\\\\"code\\\\\":")[0]
-                        .substring(2)
-                        .replace("\\\"", "\"")
-                        .replace("\\\\", "\\");
-                badCodes.add(code);
+            Map<String, String> codeMap = dbCodes.stream()
+                    .collect(Collectors.toMap(
+                            c -> c.getCode().split(" ")[0],
+                            CodeInfo::getCode
+                    ));
+
+            List<String> badCodes = new ArrayList<>();
+
+            for (JsonNode cisEntry : cisList) {
+                if (cisEntry.has("description") &&
+                        "Повторное нанесение кода".equals(cisEntry.get("description").asText())) {
+
+                    String cis = cisEntry.get("cis").asText();
+                    String codeKey = cis.split("\u001d")[0]; // Разделитель GS
+                    if (codeMap.containsKey(codeKey)) {
+                        badCodes.add(codeMap.get(codeKey)
+                                .replace(" ", "\u001d")
+                                .replace("\"", "\\\""));
+                    }
+                }
             }
+
+            return badCodes;
+
+        } catch (IOException e) {
+            log.error("Ошибка парсинга контента", e);
+            return Collections.emptyList();
         }
-
-        Map<String, String> codeMap = dbCodes.stream()
-                .collect(Collectors.toMap(
-                        c -> c.getCode().split(" ")[0],
-                        CodeInfo::getCode
-                ));
-
-        return badCodes.stream()
-                .filter(codeMap::containsKey)
-                .map(codeMap::get)
-                .map(c -> c.replace(" ", "\u001d").replace("\"", "\\\""))
-                .collect(Collectors.toList());
     }
 
     private void deleteCodesFromReport(String reportId, List<String> codes) throws Exception {
+        if (codes.isEmpty()) return;
+
         String jsonBody = objectMapper.writeValueAsString(codes);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(YamlUtil.host + "/code-usage-processor/api/v2/code-usage-reports/" + reportId + "/codes"))
                 .header("Authorization", "Bearer " + authService.getToken())
                 .header("Content-Type", "application/json")
-                .method("DELETE", HttpRequest.BodyPublishers.ofString(jsonBody)) // Исправленный вызов
+                .method("DELETE", HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
 
-        HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding());
+        HttpResponse<String> response = HttpClient.newHttpClient()
+                .send(request, HttpResponse.BodyHandlers.ofString());
+
+        log.debug("DELETE Response: {} {}", response.statusCode(), response.body());
+
+        if (response.statusCode() != 200) {
+            log.error("Ошибка удаления кодов: {}", response.body());
+        }
     }
 
     private void acceptReport(String utilId) throws Exception {
@@ -229,21 +245,48 @@ public class CheckReportsService {
         HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding());
     }
 
-    private void recalculateOrder(String reportId) throws Exception {
-        String orderNumber = getOrderNumber(reportId);
+    private void recalculateOrder(String reportId, String orderNumber) throws Exception {
+        if (orderNumber == null || orderNumber.isEmpty()) {
+            orderNumber = getOrderNumber(reportId);
+        }
+        if (orderNumber == null || orderNumber.isBlank()) {
+            log.error("Не удалось получить orderNumber для отчета {}", reportId);
+            return;
+        }
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(YamlUtil.host + "/api/manufacturing-order-process/" + orderNumber + "/recalculate"))
                 .header("Authorization", "Bearer " + authService.getToken())
                 .PUT(HttpRequest.BodyPublishers.noBody())
                 .build();
-        HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding());
+
+        HttpResponse<Void> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding());
+
+        if (response.statusCode() != 200) {
+            log.error("Ошибка пересчета счетчиков для заказа {}: {}", orderNumber, response.statusCode());
+        }
     }
 
     private String getOrderNumber(String reportId) throws Exception {
         HttpResponse<String> response = sendGetRequest(
                 YamlUtil.host + "/code-usage-processor/api/v2/code-usage-reports/" + reportId
         );
-        return objectMapper.readTree(response.body()).get("orderNumber").asText();
+
+        if (response.statusCode() != 200) {
+            log.error("Ошибка получения orderNumber для отчета {}: {}", reportId, response.statusCode());
+            return null;
+        }
+
+        JsonNode root = objectMapper.readTree(response.body());
+        JsonNode orderNumberNode = root.get("orderId");
+
+        if (orderNumberNode == null || orderNumberNode.isNull()) {
+            log.error("Поле orderNumber отсутствует в ответе для отчета {}", reportId);
+            log.debug("Полный ответ: {}", response.body());
+            return null;
+        }
+
+        return orderNumberNode.asText();
     }
 
     private HttpResponse<String> sendGetRequest(String url) throws Exception {
