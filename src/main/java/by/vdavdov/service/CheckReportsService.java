@@ -281,7 +281,6 @@ public class CheckReportsService {
 
         log.debug("Raw response: {}", rawResponse);
 
-        rawResponse = rawResponse.replace("\\n", "\n");
         log.info("{}", rawResponse);
         String[] parts = rawResponse.split("\\n\\n", 2);
 
@@ -302,9 +301,13 @@ public class CheckReportsService {
                 return "";
             }
 
-            String innerJson = contentNode.asText()
-                    .replace("\\\"", "\"")
-                    .replace("\\\\", "\\");
+            log.debug("{}", contentNode);
+            String innerJson = objectMapper.readValue(contentNode.traverse(), String.class);
+            log.debug("{}", innerJson);
+
+//            String innerJson = contentNode.asText()
+//                    .replace("\\\"", "\"")
+//                    .replace("\\\\", "\\");
 
             objectMapper.readTree(innerJson);
             return innerJson;
