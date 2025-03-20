@@ -330,48 +330,59 @@ public class CheckReportsService {
                 return Collections.emptyList();
             }
 
+            // Используем JsonNode вместо парсинга строки
             JsonNode root = objectMapper.readTree(content);
-            JsonNode cisList = root.get("cisList");
+            return processJsonNode(root, dbCodes);
 
-            if (cisList == null || !cisList.isArray()) {
-                log.error("Отсутствует или неверный формат cisList");
-                return Collections.emptyList();
-            }
-
-            Map<String, String> codeMap = dbCodes.stream()
-                    .collect(Collectors.toMap(
-                            c -> c.getCode().split("\u001d")[0], // Разделитель GS
-                            CodeInfo::getCode
-                    ));
-
-            List<String> badCodes = new ArrayList<>();
-
-            for (JsonNode cisEntry : cisList) {
-                JsonNode descriptionNode = cisEntry.get("description");
-                if (descriptionNode != null &&
-                        descriptionNode.isTextual() &&
-                        "Повторное нанесение кода".equals(descriptionNode.asText())) {
-
-                    JsonNode cisNode = cisEntry.get("cis");
-                    if (cisNode == null || !cisNode.isTextual()) {
-                        continue;
-                    }
-
-                    String cis = cisNode.asText();
-                    String codeKey = cis.split("\u001d")[0];
-
-                    if (codeMap.containsKey(codeKey)) {
-                        String codeToDelete = codeMap.get(codeKey)
-                                .replace(" ", "\u001d")
-                                .replace("\"", "\\\"");
-                        badCodes.add(codeToDelete);
-                    }
-                }
-            }
-            return badCodes;
         } catch (IOException e) {
-            log.error("Ошибка парсинга контента: {}", content, e);
+            log.error("Ошибка парсинга контента", e);
             return Collections.emptyList();
+        }
+    }
+
+    private List<String> processJsonNode(JsonNode root, List<CodeInfo> dbCodes) {
+        JsonNode cisList = root.get("cisList");
+        if (cisList == null || !cisList.isArray()) {
+            return Collections.emptyList();
+        }
+
+        Map<String, String> codeMap = dbCodes.stream()
+                .collect(Collectors.toMap(
+                        c -> c.getCode().split("\u001d")[0],
+                        CodeInfo::getCode
+                ));
+
+        List<String> badCodes = new ArrayList<>();
+
+        cisList.forEach(cisEntry -> {
+            if (isDuplicateEntry(cisEntry)) {
+                processCisEntry(cisEntry, codeMap, badCodes);
+            }
+        });
+
+        return badCodes;
+    }
+
+    private boolean isDuplicateEntry(JsonNode cisEntry) {
+        JsonNode descriptionNode = cisEntry.get("description");
+        return descriptionNode != null
+                && "Повторное нанесение кода".equals(descriptionNode.asText());
+    }
+
+    private void processCisEntry(JsonNode cisEntry,
+                                 Map<String, String> codeMap,
+                                 List<String> badCodes) {
+        JsonNode cisNode = cisEntry.get("cis");
+        if (cisNode == null || !cisNode.isTextual()) return;
+
+        String cis = cisNode.asText();
+        String[] parts = cis.split("\u001d");
+        if (parts.length == 0) return;
+
+        String codeKey = parts[0];
+        if (codeMap.containsKey(codeKey)) {
+            badCodes.add(codeMap.get(codeKey)
+                    .replace(" ", "\u001d"));
         }
     }
 
