@@ -2,6 +2,7 @@ package by.vdavdov.service;
 
 import by.vdavdov.model.*;
 import by.vdavdov.utils.YamlUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -265,20 +266,23 @@ public class CheckReportsService {
                 YamlUtil.host + "/regulator-ru-adapter/api/utilization-reports/attempts/content?path="
                         + URLEncoder.encode(path, StandardCharsets.UTF_8)
         );
-
         if (response.statusCode() != 200) {
             log.error("Ошибка получения контента: {}", response.statusCode());
             return "";
         }
-
         String rawResponse = response.body();
+
+        return getInnerJson(rawResponse);
+    }
+
+    String getInnerJson(String rawResponse) throws JsonProcessingException {
         JsonNode content = objectMapper.readTree(rawResponse);
         rawResponse = content.get("content").asText();
 
         log.debug("Raw response: {}", rawResponse);
 
         rawResponse = rawResponse.replace("\\n", "\n");
-        log.info("JSJSSJ{}", rawResponse);
+        log.info("{}", rawResponse);
         String[] parts = rawResponse.split("\\n\\n", 2);
 
         if (parts.length < 2) {
@@ -304,7 +308,6 @@ public class CheckReportsService {
 
             objectMapper.readTree(innerJson);
             return innerJson;
-
         } catch (Exception e) {
             log.error("Ошибка парсинга вложенного JSON. Тело: {}", jsonBody, e);
             return "";
