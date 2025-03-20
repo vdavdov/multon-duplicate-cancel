@@ -12,6 +12,11 @@ import java.net.http.HttpResponse;
 public class CancelService {
     private static final Logger log = LogManager.getLogger(CancelService.class);
 
+    /**
+     * Отменяет раннее проверенный отчет.
+     *
+     * @throws Exception Если запрос не удался.
+     */
     public void cancel(String reportId) throws Exception {
         AuthService authService = new AuthService();
         log.info("Начало отмены отчетов");

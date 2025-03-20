@@ -26,6 +26,13 @@ public class CheckReportsService {
     private final LastRunService lastRunService = new LastRunService();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * Основной метод обработки отклоненных отчетов.
+     * Выполняет поиск отчетов со статусом REJECTED, обработанных с момента последнего запуска.
+     * Обрабатывает результаты с пагинацией, сохраняет время текущего запуска при успешном выполнении.
+     *
+     * @throws Exception при ошибках HTTP-запросов, парсинга или сохранения времени запуска
+     */
     public void getRejectedReports() throws Exception {
         Instant lastRun = lastRunService.getLastRunTime();
         Instant currentRun = Instant.now();
@@ -65,6 +72,12 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Обрабатывает страницу с элементами отчетов.
+     * Для каждого элемента в зависимости от причины отклонения вызывает соответствующий обработчик.
+     *
+     * @param items список элементов отчетов на текущей странице
+     */
     private void processPage(List<ContentItem> items) {
         items.forEach(item -> {
             try {
@@ -79,6 +92,14 @@ public class CheckReportsService {
         });
     }
 
+    /**
+     * Обрабатывает полный дубликат отчета.
+     * Проверяет количество утилей в отчете: при наличии одного утиля отправляет на отмену,
+     * при большем количестве требует ручной обработки.
+     *
+     * @param reportId ID обрабатываемого отчета
+     * @throws Exception при ошибках HTTP-запросов или парсинга ответа
+     */
     private void processFullDuplicate(String reportId) throws Exception {
         HttpResponse<String> response = sendGetRequest(
                 YamlUtil.host + "/api/utilization-reports/" + reportId
@@ -95,6 +116,14 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Обрабатывает повторное нанесение.
+     * Выполняет многоэтапную обработку: получение кодов, проверку утилей,
+     * анализ ответов регулятора и удаление проблемных кодов.
+     *
+     * @param reportId    ID обрабатываемого отчета
+     * @param orderNumber номер заказа, связанного с отчетом
+     */
     private void processPartialDuplicate(String reportId, String orderNumber) {
         try {
             log.info("[{}] Начало обработки частичного дубля", reportId);
@@ -153,6 +182,13 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Получает список кодов из указанного отчета.
+     *
+     * @param reportId ID отчета для получения кодов
+     * @return список объектов CodeInfo с информацией о кодах
+     * @throws Exception при ошибках HTTP-запроса или парсинга ответа
+     */
     private List<CodeInfo> getReportCodes(String reportId) throws Exception {
         HttpResponse<String> response = sendGetRequest(
                 YamlUtil.host + "/code-usage-processor/api/v2/code-usage-reports/" + reportId + "/codes?page=0&size=1000"
@@ -168,6 +204,13 @@ public class CheckReportsService {
         );
     }
 
+    /**
+     * Получает ID утиля, связанного с отчетом.
+     *
+     * @param reportId ID отчета для поиска утиля
+     * @return ID утиля или null, если количество утилей не равно 1
+     * @throws Exception при ошибках HTTP-запроса или парсинга ответа
+     */
     private String getUtilIdForReport(String reportId) throws Exception {
         HttpResponse<String> response = sendGetRequest(
                 YamlUtil.host + "/api/utilization-reports/" + reportId
@@ -185,6 +228,13 @@ public class CheckReportsService {
         return utils.get(0).get("id").asText();
     }
 
+    /**
+     * Получает последний путь к ответу регулятора для указанного утиля.
+     *
+     * @param utilId ID утиля для поиска
+     * @return путь к последнему ответу регулятора или null при отсутствии
+     * @throws Exception при ошибках HTTP-запроса или парсинга ответа
+     */
     private String getLatestResponsePath(String utilId) throws Exception {
         HttpResponse<String> response = sendGetRequest(
                 YamlUtil.host + "/api/utilization-reports/" + utilId + "/attempts?page=0&size=100"
@@ -201,6 +251,13 @@ public class CheckReportsService {
                 .orElse(null);
     }
 
+    /**
+     * Получает и обрабатывает контент ответа регулятора по указанному пути.
+     *
+     * @param path путь к контенту ответа
+     * @return обработанный JSON-контент или пустую строку при ошибках
+     * @throws Exception при ошибках HTTP-запроса
+     */
     private String getResponseContent(String path) throws Exception {
         log.info("Запрос контента по пути: {}", path);
 
@@ -254,6 +311,13 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Анализирует контент ответа регулятора для выявления проблемных кодов.
+     *
+     * @param content  JSON-контент ответа регулятора
+     * @param dbCodes  список кодов из БД для сравнения
+     * @return список кодов, требующих удаления
+     */
     private List<String> processContent(String content, List<CodeInfo> dbCodes) {
         try {
             if (content == null || content.isEmpty()) {
@@ -305,6 +369,13 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Удаляет указанные коды из отчета.
+     *
+     * @param reportId ID отчета для модификации
+     * @param codes    список кодов для удаления
+     * @throws Exception при ошибках HTTP-запроса
+     */
     private void deleteCodesFromReport(String reportId, List<String> codes) throws Exception {
         if (codes.isEmpty()) {
             log.warn("[{}] Пустой список кодов для удаления", reportId);
@@ -331,6 +402,13 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Подтверждает успешную обработку отчета, его принятием для дальнейшего создания
+     * ввода в оборот
+     *
+     * @param utilId ID утиля для подтверждения
+     * @throws Exception при ошибках HTTP-запроса
+     */
     private void acceptReport(String utilId) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(YamlUtil.host + "/code-usage-processor/api/code-usage-reports/accept-reports"))
@@ -347,6 +425,13 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Инициирует пересчет счетчиков для заказа.
+     *
+     * @param reportId    ID отчета
+     * @param orderNumber номер связанного заказа
+     * @throws Exception при ошибках HTTP-запроса или отсутствии номера заказа
+     */
     private void recalculateOrder(String reportId, String orderNumber) throws Exception {
         if (orderNumber == null || orderNumber.isEmpty()) {
             orderNumber = getOrderNumber(reportId);
@@ -369,6 +454,13 @@ public class CheckReportsService {
         }
     }
 
+    /**
+     * Получает номер заказа, связанного с отчетом.
+     *
+     * @param reportId ID отчета для поиска
+     * @return номер заказа
+     * @throws Exception при ошибках HTTP-запроса или отсутствии данных
+     */
     private String getOrderNumber(String reportId) throws Exception {
         HttpResponse<String> response = sendGetRequest(
                 YamlUtil.host + "/code-usage-processor/api/v2/code-usage-reports/" + reportId
@@ -388,6 +480,13 @@ public class CheckReportsService {
         return orderNumberNode.asText();
     }
 
+    /**
+     * Вспомогательный метод для выполнения HTTP GET запросов.
+     *
+     * @param url целевой URL запроса
+     * @return объект HTTP-ответа
+     * @throws Exception при ошибках выполнения запроса
+     */
     private HttpResponse<String> sendGetRequest(String url) throws Exception {
         return HttpClient.newHttpClient().send(
                 HttpRequest.newBuilder()
@@ -399,10 +498,23 @@ public class CheckReportsService {
         );
     }
 
+    /**
+     * Парсит JSON-ответ со списком отчетов.
+     *
+     * @param json сырой JSON-ответ
+     * @return объект ReportsResponse с распарсенными данными
+     * @throws IOException при ошибках парсинга
+     */
     private ReportsResponse parseResponse(String json) throws IOException {
         return objectMapper.readValue(json, ReportsResponse.class);
     }
 
+    /**
+     * Инициирует процедуру отмены указанного отчета.
+     *
+     * @param reportId ID отчета для отмены
+     * @throws Exception при ошибках в процессе отмены
+     */
     public void sentToCancel(String reportId) throws Exception {
         cancelService.cancel(reportId);
     }

@@ -2,6 +2,9 @@ package by.vdavdov.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+/**
+ * Модель для парсинга.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ContentItem {
     private String id;

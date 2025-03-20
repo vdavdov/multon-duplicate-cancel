@@ -5,6 +5,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
+/**
+ * Модель для парсинга.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ReportsResponse {
     @JsonProperty("content")

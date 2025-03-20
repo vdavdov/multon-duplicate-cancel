@@ -12,6 +12,11 @@ public class LastRunService {
     private static final Logger log = LogManager.getLogger(LastRunService.class);
     private static final String STATE_FILE = "last_run.txt";
 
+    /**
+     * Отдает время последней проверки (чтобы не проверять все снова)
+     *
+     * @return Instant
+     */
     public Instant getLastRunTime() {
         try {
             if (Files.exists(Path.of(STATE_FILE))) {
@@ -24,6 +29,9 @@ public class LastRunService {
         return Instant.now().minus(1, ChronoUnit.DAYS); // Дефолтное значение
     }
 
+    /**
+     * Сохраняет инстант последней проверки в файл
+     */
     public void saveLastRunTime(Instant time) {
         try {
             Files.writeString(Path.of(STATE_FILE), time.toString());
